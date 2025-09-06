@@ -1,0 +1,102 @@
+### Create test lead
+POST http://localhost:3001/webhooks/ghl/lead
+Content-Type: application/json
+x-api-key: dev-secret
+
+{
+  "externalId": "ghl_100",
+  "firstName": "Test",
+  "email": "test@example.com",
+  "phone": "+15550009999",
+  "campaignId": "sample",
+  "adPlatform": "facebook",
+  "tags": ["Botox"]
+}
+
+###
+
+# Add invoice_paid event for the lead created above
+# Replace LEAD_ID with the id returned from the create lead request
+POST http://localhost:3001/dashboard/kpi/events
+Content-Type: application/json
+x-api-key: dev-secret
+
+{
+  "leadId": "LEAD_ID",
+  "kind": "invoice_paid",
+  "valueCents": 84000,
+  "metadataJson": {
+    "note": "reboot test"
+  }
+}
+
+🟢 Step 1 — Start API (backend)
+
+In Terminal 1:
+
+cd "C:\Users\hatch\Desktop\CFO AI APP\medspa-suite\api"
+
+# free port 3001 just in case
+Get-NetTCPConnection -LocalPort 3001 -State Listen -ErrorAction SilentlyContinue | % { Stop-Process -Id $_.OwningProcess -Force }
+
+# start API
+npm run dev
+
+
+Check health:
+http://localhost:3001/health
+ → should return { "ok": true }.
+
+🟢 Step 2 — Start Frontend
+
+In Terminal 2:
+
+cd "C:\Users\hatch\Desktop\CFO AI APP\medspa-suite\frontend"
+npm run dev
+
+
+App should be live at:
+http://localhost:3000
+
+🟢 Step 3 — Prisma Studio (optional DB view)
+
+In Terminal 3:
+
+cd "C:\Users\hatch\Desktop\CFO AI APP\medspa-suite\api"
+
+# if 5555 already in use, bump port to 5556
+npx prisma studio --port 5556
+
+
+Opens http://localhost:5556
+.
+
+🟢 Step 4 — Run sanity curl tests
+
+In Terminal 4 (your test terminal):
+
+A) Create a test lead
+curl -Method POST http://localhost:3001/webhooks/ghl/lead `
+  -Headers @{ "Content-Type"="application/json"; "x-api-key"="dev-secret" } `
+  -Body '{"externalId":"ghl_100","firstName":"Test","email":"test@example.com","phone":"+15550009999","campaignId":"sample","adPlatform":"facebook","tags":["Botox"]}'
+
+
+You’ll get JSON back like:
+
+{
+  "success": true,
+  "leadId": "cmf6xyz123...",
+  "message": "Lead processed successfully"
+}
+
+B) Add revenue for that lead
+
+(Replace LEAD_ID with the leadId from the create call)
+
+curl -Method POST http://localhost:3001/dashboard/kpi/events `
+  -Headers @{ "Content-Type"="application/json"; "x-api-key"="dev-secret" } `
+  -Body '{"leadId":"LEAD_ID","kind":"invoice_paid","valueCents":84000,"metadataJson":{"note":"test payment"}}'
+
+
+You’ll get JSON back showing the KPI event inserted.
+*///

@@ -1,0 +1,167 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
+}
+
+model Lead {
+  id          String   @id @default(cuid())
+  externalId  String?  @unique // GHL contact ID
+  firstName   String?
+  email       String?
+  phone       String?
+  source      String?  // "facebook", "google", "referral", etc.
+  campaignId  String?
+  adPlatform  String?  // "facebook", "google", "instagram", etc.
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  tags        LeadTag[]
+  stages      LeadStage[]
+  activities  Activity[]
+  opportunity Opportunity?
+  kpiEvents   KpiEvent[]
+  campaign    Campaign? @relation(fields: [campaignId], references: [id])
+
+  @@map("leads")
+}
+
+model Tag {
+  id        String    @id @default(cuid())
+  name      String    @unique
+  color     String?   // Hex color for UI
+  createdAt DateTime  @default(now())
+
+  // Relations
+  leads     LeadTag[]
+
+  @@map("tags")
+}
+
+model LeadTag {
+  id      String @id @default(cuid())
+  leadId  String
+  tagId   String
+
+  // Relations
+  lead    Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  tag     Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([leadId, tagId])
+  @@map("lead_tags")
+}
+
+model PipelineStage {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  order     Int      @unique
+  color     String?  // Hex color for UI
+  createdAt DateTime @default(now())
+
+  // Relations
+  leads     LeadStage[]
+
+  @@map("pipeline_stages")
+}
+
+model LeadStage {
+  id        String   @id @default(cuid())
+  leadId    String
+  stageId   String
+  changedAt DateTime @default(now())
+
+  // Relations
+  lead      Lead          @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  stage     PipelineStage @relation(fields: [stageId], references: [id])
+
+  @@map("lead_stages")
+}
+
+model Opportunity {
+  id                String    @id @default(cuid())
+  leadId            String    @unique
+  expectedValueCents Int      // Value in cents to avoid floating point issues
+  procedureCode     String?   // "BTX", "FILLER", "LASER", "RHINO", etc.
+  expectedDate      DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // Relations
+  lead              Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@map("opportunities")
+}
+
+model Activity {
+  id          String   @id @default(cuid())
+  leadId      String
+  type        String   // "sms_sent", "email_sent", "call", "form_submit", "stage_change", "tag_added"
+  payloadJson Json?    // Flexible payload for different activity types
+  createdAt   DateTime @default(now())
+
+  // Relations
+  lead        Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@map("activities")
+}
+
+model Campaign {
+  id            String   @id @default(cuid())
+  name          String
+  platform      String?  // "facebook", "google", "instagram", etc.
+  monthlySpendCents Int? // Monthly spend in cents
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  leads         Lead[]
+
+  @@map("campaigns")
+}
+
+model KpiEvent {
+  id           String   @id @default(cuid())
+  leadId       String
+  kind         String   // "ad_click", "consult_booked", "consult_show", "invoice_paid"
+  valueCents   Int?
+  occurredAt   DateTime @db.Timestamptz(6) @default(now())
+  metadataJson Json?
+
+  lead         Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([kind, occurredAt])
+  @@map("kpi_events")
+}
+
+
+model Provider {
+  id        String   @id @default(cuid())
+  name      String
+  role      String?  // "surgeon", "nurse", "consultant", etc.
+  createdAt DateTime @default(now())
+
+  // Relations
+  commissionRules CommissionRule[]
+
+  @@map("providers")
+}
+
+model CommissionRule {
+  id         String   @id @default(cuid())
+  providerId String
+  ruleJson   Json     // Flexible rule definition
+  createdAt  DateTime @default(now())
+
+  // Relations
+  provider   Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@map("commission_rules")
+}
