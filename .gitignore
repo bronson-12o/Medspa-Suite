@@ -20,6 +20,6 @@ coverage/
 .env.*
 !.env.example
 
-# Prisma
-prisma/*.db
-prisma/migrations/*/migration.sql-journal
+# Prisma (generic + your api/ path)
+**/prisma/*.db
+**/prisma/migrations/*/migration.sql-journal
