@@ -3,175 +3,398 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log('🌱 Seeding database...');
+  console.log('🌱 Starting database seed...');
 
-  // Create default pipeline stages (name is unique in your schema → ok to upsert)
-  const stages = [
-    { name: 'New', order: 1, color: '#3B82F6' },
-    { name: 'Contacted', order: 2, color: '#F59E0B' },
-    { name: 'Consult Booked', order: 3, color: '#8B5CF6' },
-    { name: 'Won', order: 4, color: '#10B981' },
-    { name: 'Lost', order: 5, color: '#EF4444' },
-  ];
-  for (const stage of stages) {
-    await prisma.pipelineStage.upsert({
-      where: { name: stage.name }, // ok: name is unique
-      update: { order: stage.order, color: stage.color },
-      create: stage,
-    });
-  }
-  console.log('✅ Pipeline stages created');
+  // Clear existing data in reverse dependency order for clean seed
+  await prisma.kpiEvent.deleteMany();
+  await prisma.activity.deleteMany();
+  await prisma.opportunity.deleteMany();
+  await prisma.leadStage.deleteMany();
+  await prisma.leadTag.deleteMany();
+  await prisma.lead.deleteMany();
+  await prisma.tag.deleteMany();
+  await prisma.pipelineStage.deleteMany();
+  await prisma.campaign.deleteMany();
+  await prisma.provider.deleteMany();
 
-  // Create default tags (name is unique → ok to upsert)
-  const tags = [
-    { name: 'Botox', color: '#FF6B6B' },
-    { name: 'Filler', color: '#4ECDC4' },
-    { name: 'Surgery', color: '#45B7D1' },
-    { name: 'Laser', color: '#96CEB4' },
-    { name: 'Rhinoplasty', color: '#FFEAA7' },
-    { name: 'Breast Augmentation', color: '#DDA0DD' },
-    { name: 'Tummy Tuck', color: '#98D8C8' },
-    { name: 'Facelift', color: '#F7DC6F' },
-  ];
-  for (const tag of tags) {
-    await prisma.tag.upsert({
-      where: { name: tag.name }, // ok: name is unique
-      update: { color: tag.color },
-      create: tag,
-    });
-  }
-  console.log('✅ Tags created');
+  console.log('🗑️  Cleared existing data');
 
-  // Create sample campaign (name is NOT unique → do find-or-create)
-  let campaign = await prisma.campaign.findFirst({
-    where: { name: 'Facebook Botox Campaign' },
-  });
-  if (!campaign) {
-    campaign = await prisma.campaign.create({
+  // Create campaigns with realistic spend data
+  const campaigns = await Promise.all([
+    prisma.campaign.create({
       data: {
         name: 'Facebook Botox Campaign',
         platform: 'facebook',
-        monthlySpendCents: 500000, // $5,000
+        monthlySpendCents: 250000, // $2,500
       },
-    });
-  }
-  console.log('✅ Sample campaign ready');
-
-  // Create sample leads
-  const sampleLeads = [
-    {
-      firstName: 'Sarah',
-      email: 'sarah@example.com',
-      phone: '+1234567890',
-      source: 'facebook',
-      campaignId: campaign.id,
-      adPlatform: 'facebook',
-    },
-    {
-      firstName: 'Mike',
-      email: 'mike@example.com',
-      phone: '+1234567891',
-      source: 'google',
-      campaignId: campaign.id,
-      adPlatform: 'google',
-    },
-    {
-      firstName: 'Emma',
-      email: 'emma@example.com',
-      phone: '+1234567892',
-      source: 'referral',
-    },
-  ];
-
-  for (const leadData of sampleLeads) {
-    const lead = await prisma.lead.create({ data: leadData });
-
-    // Initial stage = New
-    const newStage = await prisma.pipelineStage.findFirst({ where: { name: 'New' } });
-    if (newStage) {
-      await prisma.leadStage.create({
-        data: { leadId: lead.id, stageId: newStage.id },
-      });
-    }
-
-    // Add Botox tag if present
-    const botoxTag = await prisma.tag.findFirst({ where: { name: 'Botox' } });
-    if (botoxTag) {
-      // prevent dup on reruns using composite unique (leadId, tagId)
-      await prisma.leadTag.upsert({
-        where: { 
-          leadId_tagId: { 
-            leadId: lead.id, 
-            tagId: botoxTag.id 
-          } 
-        },
-        update: {},
-        create: { leadId: lead.id, tagId: botoxTag.id },
-      });
-    }
-
-    // Activity
-    await prisma.activity.create({
+    }),
+    prisma.campaign.create({
       data: {
-        leadId: lead.id,
-        type: 'form_submit',
-        payloadJson: {
-          source: leadData.source,
-          campaign: campaign.name,
-        },
+        name: 'Google Ads Filler Promo',
+        platform: 'google',
+        monthlySpendCents: 180000, // $1,800
       },
-    });
-
-    // KPI event
-    await prisma.kpiEvent.create({
+    }),
+    prisma.campaign.create({
       data: {
-        leadId: lead.id,
-        kind: 'ad_click',
-        metadataJson: {
-          platform: leadData.adPlatform,
-          campaign: campaign.name,
+        name: 'Instagram Rhinoplasty',
+        platform: 'instagram',
+        monthlySpendCents: 420000, // $4,200
+      },
+    }),
+    prisma.campaign.create({
+      data: {
+        name: 'Referral Program',
+        platform: 'referral',
+        monthlySpendCents: 50000, // $500
+      },
+    }),
+  ]);
+
+  console.log(`✅ Created ${campaigns.length} campaigns`);
+
+  // Create pipeline stages
+  const pipelineStages = await Promise.all([
+    prisma.pipelineStage.create({
+      data: { name: 'New Lead', order: 1, color: '#3B82F6' },
+    }),
+    prisma.pipelineStage.create({
+      data: { name: 'Contacted', order: 2, color: '#8B5CF6' },
+    }),
+    prisma.pipelineStage.create({
+      data: { name: 'Consultation Booked', order: 3, color: '#F59E0B' },
+    }),
+    prisma.pipelineStage.create({
+      data: { name: 'Consultation Completed', order: 4, color: '#10B981' },
+    }),
+    prisma.pipelineStage.create({
+      data: { name: 'Procedure Scheduled', order: 5, color: '#EF4444' },
+    }),
+  ]);
+
+  console.log(`✅ Created ${pipelineStages.length} pipeline stages`);
+
+  // Create tags
+  const tags = await Promise.all([
+    prisma.tag.create({
+      data: { name: 'High Value', color: '#EF4444' },
+    }),
+    prisma.tag.create({
+      data: { name: 'Repeat Customer', color: '#10B981' },
+    }),
+    prisma.tag.create({
+      data: { name: 'Referral', color: '#8B5CF6' },
+    }),
+  ]);
+
+  console.log(`✅ Created ${tags.length} tags`);
+
+  // Base date for consistent timestamps (7 days ago to now)
+  const baseDate = new Date();
+  baseDate.setDate(baseDate.getDate() - 7);
+
+  // Helper to generate dates spread across the 7-day period
+  const getRandomDateInRange = (daysOffset: number = 0) => {
+    const date = new Date(baseDate);
+    date.setDate(date.getDate() + Math.floor(Math.random() * 7) + daysOffset);
+    date.setHours(Math.floor(Math.random() * 24));
+    date.setMinutes(Math.floor(Math.random() * 60));
+    return date;
+  };
+
+  // Create leads with spread-out creation dates
+  const leads = await Promise.all([
+    // Facebook Botox Campaign leads
+    prisma.lead.create({
+      data: {
+        firstName: 'Sarah',
+        email: 'sarah.johnson@email.com',
+        phone: '+1234567890',
+        source: 'facebook',
+        campaignId: campaigns[0].id,
+        adPlatform: 'facebook',
+        createdAt: getRandomDateInRange(-2),
+      },
+    }),
+    prisma.lead.create({
+      data: {
+        firstName: 'Emma',
+        email: 'emma.davis@email.com',
+        phone: '+1234567891',
+        source: 'facebook',
+        campaignId: campaigns[0].id,
+        adPlatform: 'facebook',
+        createdAt: getRandomDateInRange(-1),
+      },
+    }),
+    prisma.lead.create({
+      data: {
+        firstName: 'Jessica',
+        email: 'jessica.wilson@email.com',
+        phone: '+1234567892',
+        source: 'facebook',
+        campaignId: campaigns[0].id,
+        adPlatform: 'facebook',
+        createdAt: getRandomDateInRange(),
+      },
+    }),
+    // Google Ads Filler leads
+    prisma.lead.create({
+      data: {
+        firstName: 'Michael',
+        email: 'michael.brown@email.com',
+        phone: '+1234567893',
+        source: 'google',
+        campaignId: campaigns[1].id,
+        adPlatform: 'google',
+        createdAt: getRandomDateInRange(-3),
+      },
+    }),
+    prisma.lead.create({
+      data: {
+        firstName: 'Ashley',
+        email: 'ashley.miller@email.com',
+        phone: '+1234567894',
+        source: 'google',
+        campaignId: campaigns[1].id,
+        adPlatform: 'google',
+        createdAt: getRandomDateInRange(-1),
+      },
+    }),
+    prisma.lead.create({
+      data: {
+        firstName: 'David',
+        email: 'david.garcia@email.com',
+        phone: '+1234567895',
+        source: 'google',
+        campaignId: campaigns[1].id,
+        adPlatform: 'google',
+        createdAt: getRandomDateInRange(),
+      },
+    }),
+    // Instagram Rhinoplasty leads
+    prisma.lead.create({
+      data: {
+        firstName: 'Madison',
+        email: 'madison.rodriguez@email.com',
+        phone: '+1234567896',
+        source: 'instagram',
+        campaignId: campaigns[2].id,
+        adPlatform: 'instagram',
+        createdAt: getRandomDateInRange(-4),
+      },
+    }),
+    prisma.lead.create({
+      data: {
+        firstName: 'Tyler',
+        email: 'tyler.martinez@email.com',
+        phone: '+1234567897',
+        source: 'instagram',
+        campaignId: campaigns[2].id,
+        adPlatform: 'instagram',
+        createdAt: getRandomDateInRange(-2),
+      },
+    }),
+    prisma.lead.create({
+      data: {
+        firstName: 'Samantha',
+        email: 'samantha.anderson@email.com',
+        phone: '+1234567898',
+        source: 'instagram',
+        campaignId: campaigns[2].id,
+        adPlatform: 'instagram',
+        createdAt: getRandomDateInRange(),
+      },
+    }),
+    // Referral leads
+    prisma.lead.create({
+      data: {
+        firstName: 'Christopher',
+        email: 'christopher.thomas@email.com',
+        phone: '+1234567899',
+        source: 'referral',
+        campaignId: campaigns[3].id,
+        createdAt: getRandomDateInRange(-5),
+      },
+    }),
+    prisma.lead.create({
+      data: {
+        firstName: 'Amanda',
+        email: 'amanda.jackson@email.com',
+        phone: '+1234567800',
+        source: 'referral',
+        campaignId: campaigns[3].id,
+        createdAt: getRandomDateInRange(-3),
+      },
+    }),
+    prisma.lead.create({
+      data: {
+        firstName: 'Brandon',
+        email: 'brandon.white@email.com',
+        phone: '+1234567801',
+        source: 'referral',
+        campaignId: campaigns[3].id,
+        createdAt: getRandomDateInRange(-1),
+      },
+    }),
+  ]);
+
+  console.log(`✅ Created ${leads.length} leads`);
+
+  // Create KPI events with timestamps spread across multiple days
+  // This validates the end-exclusive report logic
+  const kpiEvents = [];
+  
+  for (const lead of leads) {
+    // Each lead gets an ad click event
+    kpiEvents.push(
+      prisma.kpiEvent.create({
+        data: {
+          leadId: lead.id,
+          kind: 'ad_click',
+          occurredAt: getRandomDateInRange(-6),
+          metadataJson: { source: lead.source, campaign: lead.campaignId },
         },
-      },
-    });
-  }
-  console.log('✅ Sample leads created');
+      })
+    );
 
-  // Sample opportunities (first two leads)
-  const leads = await prisma.lead.findMany({ orderBy: { createdAt: 'asc' } });
-  for (const lead of leads.slice(0, 2)) {
-    // unique on leadId in schema → use upsert to be re-run safe
-    await prisma.opportunity.upsert({
-      where: { leadId: lead.id },
-      update: {
-        expectedValueCents: 50000,
-        procedureCode: 'BTX',
-        expectedDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      },
-      create: {
-        leadId: lead.id,
-        expectedValueCents: 50000, // $500
-        procedureCode: 'BTX',
-        expectedDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      },
-    });
-  }
-  console.log('✅ Sample opportunities created');
+    // 70% chance of consultation booked
+    if (Math.random() > 0.3) {
+      kpiEvents.push(
+        prisma.kpiEvent.create({
+          data: {
+            leadId: lead.id,
+            kind: 'consult_booked',
+            occurredAt: getRandomDateInRange(-4),
+            metadataJson: { bookedBy: 'website_form' },
+          },
+        })
+      );
 
-  // Sample providers (name is NOT unique → do find-or-create)
-  const providers = [
-    { name: 'Dr. Smith', role: 'surgeon' },
-    { name: 'Dr. Johnson', role: 'surgeon' },
-    { name: 'Nurse Williams', role: 'nurse' },
-  ];
-  for (const p of providers) {
-    const existing = await prisma.provider.findFirst({ where: { name: p.name } });
-    if (!existing) {
-      await prisma.provider.create({ data: p });
+      // 80% chance of showing up if booked
+      if (Math.random() > 0.2) {
+        kpiEvents.push(
+          prisma.kpiEvent.create({
+            data: {
+              leadId: lead.id,
+              kind: 'consult_show',
+              occurredAt: getRandomDateInRange(-2),
+              metadataJson: { duration_minutes: Math.floor(Math.random() * 60) + 30 },
+            },
+          })
+        );
+
+        // 60% chance of payment if they showed
+        if (Math.random() > 0.4) {
+          const procedureValues = [45000, 65000, 125000, 235000, 850000]; // $450, $650, $1250, $2350, $8500
+          kpiEvents.push(
+            prisma.kpiEvent.create({
+              data: {
+                leadId: lead.id,
+                kind: 'invoice_paid',
+                valueCents: procedureValues[Math.floor(Math.random() * procedureValues.length)],
+                occurredAt: getRandomDateInRange(),
+                metadataJson: { 
+                  procedure: ['Botox', 'Filler', 'Laser', 'Rhinoplasty', 'BBL'][Math.floor(Math.random() * 5)],
+                  payment_method: 'card'
+                },
+              },
+            })
+          );
+        }
+      }
     }
   }
-  console.log('✅ Sample providers created');
 
-  console.log('🎉 Database seeded successfully!');
+  await Promise.all(kpiEvents);
+  console.log(`✅ Created ${kpiEvents.length} KPI events`);
+
+  // Create some opportunities
+  const highValueLeads = leads.slice(0, 4);
+  const opportunities = await Promise.all(
+    highValueLeads.map(lead =>
+      prisma.opportunity.create({
+        data: {
+          leadId: lead.id,
+          expectedValueCents: Math.floor(Math.random() * 500000) + 100000, // $1k-$6k
+          procedureCode: ['BTX', 'FILLER', 'LASER', 'RHINO'][Math.floor(Math.random() * 4)],
+          expectedDate: getRandomDateInRange(7), // Future dates
+        },
+      })
+    )
+  );
+
+  console.log(`✅ Created ${opportunities.length} opportunities`);
+
+  // Add some lead tags
+  const leadTags = await Promise.all([
+    prisma.leadTag.create({
+      data: { leadId: leads[0].id, tagId: tags[0].id }, // High Value
+    }),
+    prisma.leadTag.create({
+      data: { leadId: leads[1].id, tagId: tags[1].id }, // Repeat Customer
+    }),
+    prisma.leadTag.create({
+      data: { leadId: leads[9].id, tagId: tags[2].id }, // Referral
+    }),
+    prisma.leadTag.create({
+      data: { leadId: leads[10].id, tagId: tags[2].id }, // Referral
+    }),
+  ]);
+
+  console.log(`✅ Created ${leadTags.length} lead tags`);
+
+  // Add lead stages for tracking
+  const leadStages = await Promise.all([
+    prisma.leadStage.create({
+      data: {
+        leadId: leads[0].id,
+        stageId: pipelineStages[4].id, // Procedure Scheduled
+        changedAt: getRandomDateInRange(-1),
+      },
+    }),
+    prisma.leadStage.create({
+      data: {
+        leadId: leads[1].id,
+        stageId: pipelineStages[3].id, // Consultation Completed
+        changedAt: getRandomDateInRange(-2),
+      },
+    }),
+    prisma.leadStage.create({
+      data: {
+        leadId: leads[2].id,
+        stageId: pipelineStages[2].id, // Consultation Booked
+        changedAt: getRandomDateInRange(-1),
+      },
+    }),
+  ]);
+
+  console.log(`✅ Created ${leadStages.length} lead stage assignments`);
+
+  // Create a provider
+  const provider = await prisma.provider.create({
+    data: {
+      name: 'Dr. Sarah Mitchell',
+      role: 'surgeon',
+    },
+  });
+
+  console.log('✅ Created provider');
+
+  console.log('🎉 Database seed completed successfully!');
+  console.log(`
+📊 Summary:
+- ${campaigns.length} campaigns
+- ${leads.length} leads  
+- ${kpiEvents.length} KPI events spread across 7 days
+- ${opportunities.length} opportunities
+- ${pipelineStages.length} pipeline stages
+- ${tags.length} tags
+
+🧪 Test the seeded data:
+API Reports: curl "http://localhost:3001/reports/revenue?from=${baseDate.toISOString().split('T')[0]}&to=${new Date().toISOString().split('T')[0]}"
+DB Browser: http://localhost:8081 (after docker compose up)
+  `);
 }
 
 main()
