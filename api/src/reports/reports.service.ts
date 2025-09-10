@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
@@ -111,5 +111,33 @@ export class ReportsService {
     });
 
     return rows.sort((a, b) => b.revenueCents - a.revenueCents);
+  }
+
+  async revenueDaily(from?: string, to?: string) {
+    const range = {
+      gte: this.fromStartUTC(from),
+      lt: this.toEndExclusiveUTC(to),
+    };
+
+    const result = await prisma.$queryRaw<Array<{
+      day: Date;
+      revenue_cents: bigint;
+    }>>`
+      SELECT 
+        date_trunc('day', occurred_at) as day,
+        COALESCE(SUM(value_cents), 0) as revenue_cents
+      FROM kpi_events 
+      WHERE kind = 'invoice_paid'
+        AND occurred_at >= ${range.gte}
+        ${range.lt ? Prisma.sql`AND occurred_at < ${range.lt}` : Prisma.empty}
+      GROUP BY date_trunc('day', occurred_at)
+      ORDER BY day ASC
+    `;
+
+    return result.map(row => ({
+      day: row.day.toISOString().split('T')[0], // YYYY-MM-DD format
+      revenueCents: Number(row.revenue_cents),
+      revenue: Number(row.revenue_cents) / 100,
+    }));
   }
 }

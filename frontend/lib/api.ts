@@ -133,3 +133,32 @@ export const automationsApi = {
   delete: (id: string) => api.delete(`/automations/${id}`),
   execute: (id: string, context: any) => api.post(`/automations/${id}/execute`, context),
 };
+
+export const reportsApi = {
+  getRevenue: (from?: string, to?: string) => {
+    const params = new URLSearchParams();
+    if (from) params.append('from', from);
+    if (to) params.append('to', to);
+    
+    return api.get(`/reports/revenue/daily?${params.toString()}`);
+  },
+};
+
+// Additional fetch helpers as requested in superprompt
+const API = process.env.NEXT_PUBLIC_API_BASE!;
+const HEADERS = { 'x-api-key': process.env.NEXT_PUBLIC_FRONT_API_KEY! };
+
+export async function getStages(pipelineId: string) {
+  const res = await fetch(`${API}/pipelines/${pipelineId}/stages`, { headers: HEADERS });
+  if (!res.ok) throw new Error('Failed to fetch stages');
+  return res.json();
+}
+
+export async function moveLead(leadId: string, stageId: string) {
+  const res = await fetch(`${API}/leads/${leadId}`, {
+    method: 'PATCH',
+    headers: { ...HEADERS, 'content-type': 'application/json' },
+    body: JSON.stringify({ stageId }),
+  });
+  if (!res.ok) throw new Error('Failed to move lead');
+}

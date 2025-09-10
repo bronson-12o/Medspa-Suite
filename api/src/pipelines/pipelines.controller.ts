@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards } from '@nestjs/common';
 import { PipelinesService } from './pipelines.service';
 import { ApiKeyGuard } from '../common/api-key.guard';
+import { ReorderStagesDto } from './dto/reorder.dto';
 
 @Controller('pipelines')
 export class PipelinesController {
@@ -9,6 +10,17 @@ export class PipelinesController {
   @Get()
   findAll() {
     return this.pipelinesService.findAll();
+  }
+
+  @Get(':id/stages')
+  getStagesWithCounts(@Param('id') id: string) {
+    return this.pipelinesService.getStagesWithCounts(id);
+  }
+
+  @Post(':id/stages/reorder')
+  @UseGuards(ApiKeyGuard)
+  reorderStages(@Param('id') id: string, @Body() dto: ReorderStagesDto) {
+    return this.pipelinesService.reorderStages(id, dto.stageIds);
   }
 
   @Post()

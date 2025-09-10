@@ -1,8 +1,20 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { leadsApi, tagsApi, pipelinesApi } from '@/lib/api';
+import { 
+  DndContext, 
+  DragEndEvent, 
+  DragStartEvent,
+  DragOverEvent,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import { leadsApi, tagsApi, pipelinesApi, moveLead } from '@/lib/api';
 import LeadTable from '@/components/LeadTable';
+import StageColumn from '@/components/kanban/StageColumn';
+import { ViewColumnsIcon, TableCellsIcon } from '@heroicons/react/24/outline';
 
 interface Lead {
   id: string;
@@ -63,12 +75,22 @@ export default function LeadsPage() {
   const [stages, setStages] = useState<PipelineStage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'table' | 'kanban'>('kanban');
+  const [activeLead, setActiveLead] = useState<Lead | null>(null);
   const [filters, setFilters] = useState({
     search: '',
     stageId: '',
     tagIds: [] as string[],
     campaignId: '',
   });
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    })
+  );
 
   useEffect(() => {
     const fetchData = async () => {
@@ -119,6 +141,77 @@ export default function LeadsPage() {
     }
   };
 
+  const handleDragStart = (event: DragStartEvent) => {
+    const lead = leads.find(l => l.id === event.active.id);
+    setActiveLead(lead || null);
+  };
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    
+    if (!over || active.id === over.id) {
+      setActiveLead(null);
+      return;
+    }
+
+    const leadId = active.id as string;
+    const newStageId = over.id as string;
+    
+    // Find the lead and its current stage
+    const lead = leads.find(l => l.id === leadId);
+    const currentStageId = lead?.stages?.[0]?.stage?.id;
+    
+    if (currentStageId === newStageId) {
+      setActiveLead(null);
+      return;
+    }
+
+    // Optimistic update
+    setLeads(prevLeads => 
+      prevLeads.map(l => 
+        l.id === leadId 
+          ? { 
+              ...l, 
+              stages: [{ 
+                stage: stages.find(s => s.id === newStageId)!, 
+                changedAt: new Date().toISOString() 
+              }] 
+            }
+          : l
+      )
+    );
+
+    try {
+      await moveLead(leadId, newStageId);
+    } catch (error) {
+      console.error('Failed to move lead:', error);
+      // Rollback optimistic update
+      setLeads(prevLeads => 
+        prevLeads.map(l => 
+          l.id === leadId 
+            ? { 
+                ...l, 
+                stages: [{ 
+                  stage: stages.find(s => s.id === currentStageId)!, 
+                  changedAt: new Date().toISOString() 
+                }] 
+              }
+            : l
+        )
+      );
+    } finally {
+      setActiveLead(null);
+    }
+  };
+
+  // Group leads by stage for Kanban view
+  const leadsByStage = stages.reduce((acc, stage) => {
+    acc[stage.id] = leads.filter(lead => 
+      lead.stages?.length > 0 && lead.stages[0].stage.id === stage.id
+    );
+    return acc;
+  }, {} as Record<string, Lead[]>);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -146,11 +239,37 @@ export default function LeadsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Leads</h1>
-        <p className="mt-1 text-sm text-gray-500">
-          Manage and track your leads
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Leads</h1>
+          <p className="mt-1 text-sm text-gray-500">
+            Manage and track your leads
+          </p>
+        </div>
+        
+        {/* View Toggle */}
+        <div className="flex items-center space-x-2 bg-gray-100 p-1 rounded-lg">
+          <button
+            onClick={() => setViewMode('table')}
+            className={`p-2 rounded-md transition-colors ${
+              viewMode === 'table' 
+                ? 'bg-white text-gray-900 shadow-sm' 
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <TableCellsIcon className="h-5 w-5" />
+          </button>
+          <button
+            onClick={() => setViewMode('kanban')}
+            className={`p-2 rounded-md transition-colors ${
+              viewMode === 'kanban' 
+                ? 'bg-white text-gray-900 shadow-sm' 
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <ViewColumnsIcon className="h-5 w-5" />
+          </button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -216,13 +335,37 @@ export default function LeadsPage() {
         </div>
       </div>
 
-      <LeadTable
-        leads={leads}
-        tags={tags}
-        stages={stages}
-        onStageUpdate={handleStageUpdate}
-        onTagsUpdate={handleTagsUpdate}
-      />
+      {/* Conditional View Rendering */}
+      {viewMode === 'table' ? (
+        <LeadTable
+          leads={leads}
+          tags={tags}
+          stages={stages}
+          onStageUpdate={handleStageUpdate}
+          onTagsUpdate={handleTagsUpdate}
+        />
+      ) : (
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+        >
+          <div className="flex overflow-x-auto gap-6 pb-4">
+            {stages
+              .sort((a, b) => a.order - b.order)
+              .map((stage) => (
+                <StageColumn
+                  key={stage.id}
+                  stage={stage}
+                  leads={leadsByStage[stage.id] || []}
+                  onTagsUpdate={handleTagsUpdate}
+                  availableTags={tags}
+                />
+              ))}
+          </div>
+        </DndContext>
+      )}
     </div>
   );
 }

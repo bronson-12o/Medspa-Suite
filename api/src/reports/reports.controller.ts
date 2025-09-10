@@ -27,4 +27,10 @@ export class ReportsController {
     this.checkKey(key);
     return this.svc.byCampaign(from, to);
   }
+
+  @Get('revenue/daily')
+  async revenueDaily(@Query('from') from?: string, @Query('to') to?: string, @Headers('x-api-key') key?: string) {
+    this.checkKey(key);
+    return this.svc.revenueDaily(from, to);
+  }
 }

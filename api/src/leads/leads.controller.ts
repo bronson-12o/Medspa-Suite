@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { LeadsService } from './leads.service';
 import { CreateLeadDto, UpdateLeadStageDto, UpdateLeadTagsDto } from './dto/lead.dto';
+import { UpdateLeadDto } from './dto/update-lead.dto';
 import { ApiKeyGuard } from '../common/api-key.guard';
 
 @Controller('leads')
@@ -61,6 +62,12 @@ export class LeadsController {
     @Body() updateTagsDto: UpdateLeadTagsDto,
   ) {
     return this.leadsService.updateTags(id, updateTagsDto);
+  }
+
+  @Patch(':id')
+  @UseGuards(ApiKeyGuard)
+  update(@Param('id') id: string, @Body() updateLeadDto: UpdateLeadDto) {
+    return this.leadsService.update(id, updateLeadDto);
   }
 
   @Delete(':id')

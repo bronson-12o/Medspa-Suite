@@ -20,6 +20,7 @@ model Lead {
   source      String?  // "facebook", "google", "referral", etc.
   campaignId  String?
   adPlatform  String?  // "facebook", "google", "instagram", etc.
+  stageId     String?  // Current pipeline stage
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -30,6 +31,7 @@ model Lead {
   opportunity Opportunity?
   kpiEvents   KpiEvent[]
   campaign    Campaign? @relation(fields: [campaignId], references: [id])
+  currentStage PipelineStage? @relation(fields: [stageId], references: [id], name: "LeadCurrentStage")
 
   @@map("leads")
 }
@@ -68,6 +70,7 @@ model PipelineStage {
 
   // Relations
   leads     LeadStage[]
+  currentLeads Lead[] @relation(name: "LeadCurrentStage")
 
   @@map("pipeline_stages")
 }

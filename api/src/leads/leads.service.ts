@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../common/prisma.service';
 import { CreateLeadDto, UpdateLeadStageDto, UpdateLeadTagsDto } from './dto/lead.dto';
+import { UpdateLeadDto } from './dto/update-lead.dto';
 
 @Injectable()
 export class LeadsService {
@@ -23,11 +24,7 @@ export class LeadsService {
     }
 
     if (filters?.stageId) {
-      where.stages = {
-        some: {
-          stageId: filters.stageId,
-        },
-      };
+      where.stageId = filters.stageId;
     }
 
     if (filters?.tagIds?.length) {
@@ -50,6 +47,7 @@ export class LeadsService {
             tag: true,
           },
         },
+        currentStage: true,
         stages: {
           include: {
             stage: true,
@@ -83,6 +81,7 @@ export class LeadsService {
             tag: true,
           },
         },
+        currentStage: true,
         stages: {
           include: {
             stage: true,
@@ -135,18 +134,26 @@ export class LeadsService {
       },
     });
 
-    // Set initial stage to "New" if not specified
-    const newStage = await this.prisma.pipelineStage.findFirst({
-      where: { name: 'New' },
-    });
-
-    if (newStage) {
-      await this.prisma.leadStage.create({
-        data: {
-          leadId: lead.id,
-          stageId: newStage.id,
-        },
+    // Set initial stage to "New" if not specified and no stageId provided
+    if (!leadData.stageId) {
+      const newStage = await this.prisma.pipelineStage.findFirst({
+        where: { name: 'New' },
       });
+
+      if (newStage) {
+        await Promise.all([
+          this.prisma.lead.update({
+            where: { id: lead.id },
+            data: { stageId: newStage.id },
+          }),
+          this.prisma.leadStage.create({
+            data: {
+              leadId: lead.id,
+              stageId: newStage.id,
+            },
+          }),
+        ]);
+      }
     }
 
     return lead;
@@ -159,26 +166,98 @@ export class LeadsService {
       throw new Error('Stage ID is required');
     }
 
-    // Create new stage entry
-    await this.prisma.leadStage.create({
-      data: {
-        leadId: id,
-        stageId: updateStageDto.stageId,
-      },
-    });
-
-    // Create activity record
-    await this.prisma.activity.create({
-      data: {
-        leadId: id,
-        type: 'stage_change',
-        payloadJson: {
-          fromStage: lead.stages[0]?.stage?.name,
-          toStage: updateStageDto.stageId,
+    // Update current stage and create stage history entry
+    await Promise.all([
+      this.prisma.lead.update({
+        where: { id },
+        data: { stageId: updateStageDto.stageId },
+      }),
+      this.prisma.leadStage.create({
+        data: {
+          leadId: id,
+          stageId: updateStageDto.stageId,
         },
-      },
-    });
+      }),
+      this.prisma.activity.create({
+        data: {
+          leadId: id,
+          type: 'stage_change',
+          payloadJson: {
+            fromStage: lead.currentStage?.name || lead.stages[0]?.stage?.name,
+            toStage: updateStageDto.stageId,
+          },
+        },
+      }),
+    ]);
 
+    return this.findOne(id);
+  }
+
+  async update(id: string, updateLeadDto: UpdateLeadDto) {
+    const lead = await this.findOne(id);
+    const { stageId, tagIds } = updateLeadDto;
+
+    const updates: Promise<any>[] = [];
+
+    // Update stage if provided
+    if (stageId) {
+      updates.push(
+        this.prisma.lead.update({
+          where: { id },
+          data: { stageId },
+        }),
+        this.prisma.leadStage.create({
+          data: {
+            leadId: id,
+            stageId,
+          },
+        }),
+        this.prisma.activity.create({
+          data: {
+            leadId: id,
+            type: 'stage_change',
+            payloadJson: {
+              fromStage: lead.currentStage?.name || lead.stages[0]?.stage?.name,
+              toStage: stageId,
+            },
+          },
+        }),
+      );
+    }
+
+    // Update tags if provided
+    if (tagIds !== undefined) {
+      updates.push(
+        this.prisma.leadTag.deleteMany({
+          where: { leadId: id },
+        }),
+      );
+      
+      if (tagIds.length > 0) {
+        updates.push(
+          this.prisma.leadTag.createMany({
+            data: tagIds.map(tagId => ({
+              leadId: id,
+              tagId,
+            })),
+          }),
+        );
+      }
+      
+      updates.push(
+        this.prisma.activity.create({
+          data: {
+            leadId: id,
+            type: 'tag_updated',
+            payloadJson: {
+              tagIds,
+            },
+          },
+        }),
+      );
+    }
+
+    await Promise.all(updates);
     return this.findOne(id);
   }
 

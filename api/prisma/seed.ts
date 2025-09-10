@@ -56,19 +56,16 @@ async function main() {
   // Create pipeline stages
   const pipelineStages = await Promise.all([
     prisma.pipelineStage.create({
-      data: { name: 'New Lead', order: 1, color: '#3B82F6' },
+      data: { name: 'New', order: 1, color: '#3B82F6' },
     }),
     prisma.pipelineStage.create({
-      data: { name: 'Contacted', order: 2, color: '#8B5CF6' },
+      data: { name: 'Consult Booked', order: 2, color: '#8B5CF6' },
     }),
     prisma.pipelineStage.create({
-      data: { name: 'Consultation Booked', order: 3, color: '#F59E0B' },
+      data: { name: 'Consult Show', order: 3, color: '#F59E0B' },
     }),
     prisma.pipelineStage.create({
-      data: { name: 'Consultation Completed', order: 4, color: '#10B981' },
-    }),
-    prisma.pipelineStage.create({
-      data: { name: 'Procedure Scheduled', order: 5, color: '#EF4444' },
+      data: { name: 'Paid', order: 4, color: '#10B981' },
     }),
   ]);
 
@@ -113,6 +110,7 @@ async function main() {
         source: 'facebook',
         campaignId: campaigns[0].id,
         adPlatform: 'facebook',
+        stageId: pipelineStages[0].id, // New
         createdAt: getRandomDateInRange(-2),
       },
     }),
@@ -124,6 +122,7 @@ async function main() {
         source: 'facebook',
         campaignId: campaigns[0].id,
         adPlatform: 'facebook',
+        stageId: pipelineStages[0].id, // New
         createdAt: getRandomDateInRange(-1),
       },
     }),
@@ -135,6 +134,7 @@ async function main() {
         source: 'facebook',
         campaignId: campaigns[0].id,
         adPlatform: 'facebook',
+        stageId: pipelineStages[0].id, // New
         createdAt: getRandomDateInRange(),
       },
     }),
@@ -147,6 +147,7 @@ async function main() {
         source: 'google',
         campaignId: campaigns[1].id,
         adPlatform: 'google',
+        stageId: pipelineStages[0].id, // New
         createdAt: getRandomDateInRange(-3),
       },
     }),
@@ -158,6 +159,7 @@ async function main() {
         source: 'google',
         campaignId: campaigns[1].id,
         adPlatform: 'google',
+        stageId: pipelineStages[0].id, // New
         createdAt: getRandomDateInRange(-1),
       },
     }),
@@ -169,6 +171,7 @@ async function main() {
         source: 'google',
         campaignId: campaigns[1].id,
         adPlatform: 'google',
+        stageId: pipelineStages[0].id, // New
         createdAt: getRandomDateInRange(),
       },
     }),
@@ -181,6 +184,7 @@ async function main() {
         source: 'instagram',
         campaignId: campaigns[2].id,
         adPlatform: 'instagram',
+        stageId: pipelineStages[0].id, // New
         createdAt: getRandomDateInRange(-4),
       },
     }),
@@ -192,6 +196,7 @@ async function main() {
         source: 'instagram',
         campaignId: campaigns[2].id,
         adPlatform: 'instagram',
+        stageId: pipelineStages[0].id, // New
         createdAt: getRandomDateInRange(-2),
       },
     }),
@@ -203,6 +208,7 @@ async function main() {
         source: 'instagram',
         campaignId: campaigns[2].id,
         adPlatform: 'instagram',
+        stageId: pipelineStages[0].id, // New
         createdAt: getRandomDateInRange(),
       },
     }),
@@ -214,6 +220,7 @@ async function main() {
         phone: '+1234567899',
         source: 'referral',
         campaignId: campaigns[3].id,
+        stageId: pipelineStages[0].id, // New
         createdAt: getRandomDateInRange(-5),
       },
     }),
@@ -224,6 +231,7 @@ async function main() {
         phone: '+1234567800',
         source: 'referral',
         campaignId: campaigns[3].id,
+        stageId: pipelineStages[0].id, // New
         createdAt: getRandomDateInRange(-3),
       },
     }),
@@ -234,6 +242,7 @@ async function main() {
         phone: '+1234567801',
         source: 'referral',
         campaignId: campaigns[3].id,
+        stageId: pipelineStages[0].id, // New
         createdAt: getRandomDateInRange(-1),
       },
     }),
@@ -344,28 +353,44 @@ async function main() {
 
   console.log(`✅ Created ${leadTags.length} lead tags`);
 
-  // Add lead stages for tracking
+  // Add lead stages for tracking and update current stages
   const leadStages = await Promise.all([
     prisma.leadStage.create({
       data: {
         leadId: leads[0].id,
-        stageId: pipelineStages[4].id, // Procedure Scheduled
+        stageId: pipelineStages[3].id, // Paid
         changedAt: getRandomDateInRange(-1),
       },
     }),
     prisma.leadStage.create({
       data: {
         leadId: leads[1].id,
-        stageId: pipelineStages[3].id, // Consultation Completed
+        stageId: pipelineStages[2].id, // Consult Show
         changedAt: getRandomDateInRange(-2),
       },
     }),
     prisma.leadStage.create({
       data: {
         leadId: leads[2].id,
-        stageId: pipelineStages[2].id, // Consultation Booked
+        stageId: pipelineStages[1].id, // Consult Booked
         changedAt: getRandomDateInRange(-1),
       },
+    }),
+  ]);
+
+  // Update current stage for some leads to show progression
+  await Promise.all([
+    prisma.lead.update({
+      where: { id: leads[0].id },
+      data: { stageId: pipelineStages[3].id }, // Paid
+    }),
+    prisma.lead.update({
+      where: { id: leads[1].id },
+      data: { stageId: pipelineStages[2].id }, // Consult Show
+    }),
+    prisma.lead.update({
+      where: { id: leads[2].id },
+      data: { stageId: pipelineStages[1].id }, // Consult Booked
     }),
   ]);
 
